@@ -115,8 +115,9 @@ Resolution: the tool manages **one** wake at *(earliest scheduled task) − 1 mi
 
 ```
 ~/.browser-chore/tasks/<name>/
-  task.toml        # manifest: schedule, executor, caffeinate timeout, needs_browser_lock,
-                   #           success markers, notify target, trigger style
+  task.{toml|env}  # manifest (format TBD — see Open Question 3): schedule, executor,
+                   #   caffeinate timeout, needs_browser_lock, success markers,
+                   #   notify target, trigger style
   run              # the executor command (or it's named in the manifest)
   should_run       # optional hook script; exit 0 = proceed (default: time-based "ran this cycle?")
   prompt.md        # for claude-brave executors: the validated browser flow
@@ -128,7 +129,7 @@ Resolution: the tool manages **one** wake at *(earliest scheduled task) − 1 mi
 
 Generated launchd agents per task (from templates): `com.browser-chore.<name>.plist` (primary) + `com.browser-chore.<name>-retry.plist` (retry). All share the global lock and the engine library.
 
-`task.toml` is a small, readable, human-editable file. The skill writes it; you can hand-edit it.
+The manifest is a small, readable, human-editable file. The skill writes it; you can hand-edit it.
 
 ---
 
