@@ -81,13 +81,15 @@ Per-task hooks the engine calls:
 | **success spec** | how to read the result | success-marker grep (`SIGNIN: COIN_COLLECTED` …) | success-marker grep (`FILL: DONE/PARTIAL/RETRY/NOTHING/NOT_LOGGED_IN`) |
 | **notify** | where results go | osascript (was an open TODO) | Discord webhook |
 
-`should_run` being pluggable is **load-bearing**: iyf is time-based, alfred is state-based — there is no single built-in rule that serves both.
+`should_run` being pluggable is **load-bearing**: iyf is time-based, alfred is state-based — there is no single built-in rule that serves both. **The engine ships no default `should_run`** — every task owns its full check. This is deliberate: iyf's "ran this cycle?" smuggles in the entire cycle-boundary computation (the `< 9` hour gate, the `date -v-1d` previous-cycle mapping, the reset-window reasoning) that caused the 5/30 calendar-day bug and the 6/3→6/5 idempotency churn. That logic must live in iyf's hook, carried over **verbatim** from `collect.sh` — never re-derived by the engine or casually reimplemented by a new task leaning on a "simple time-based default."
 
 ### 5.2 Global shared lock (replaces alfred's hack)
 
 A **single** lock guards the shared logged-in browser across **all** tasks, so two tasks never drive it at once. This deletes alfred's hard-coded defer-to-iyf check. Tasks whose executor is *isolated* (a headless Playwright job with its own browser) declare `needs_browser_lock = false` and skip it.
 
 Mechanism: the proven PID-tracked `mkdir` lock with dead-owner steal (from `collect.sh`), promoted to a single well-known path.
+
+Note: alfred's hack also encoded **priority** (alfred yields to iyf). A plain mutex is first-come-first-served. That's almost certainly fine — the tasks only need to *not collide*, not run in a fixed order — but the migration should confirm neither task depends on winning the race.
 
 ### 5.3 Trigger model: scheduled + event-kick + retry-on-wake net
 
@@ -119,7 +121,7 @@ Resolution: the tool manages **one** wake at *(earliest scheduled task) − 1 mi
                    #   caffeinate timeout, needs_browser_lock, success markers,
                    #   notify target, trigger style
   run              # the executor command (or it's named in the manifest)
-  should_run       # optional hook script; exit 0 = proceed (default: time-based "ran this cycle?")
+  should_run       # REQUIRED hook script, 100% task-owned; exit 0 = proceed. No engine default.
   prompt.md        # for claude-brave executors: the validated browser flow
   flow.js          # for playwright executors: the script
   state            # unverified | trusted, shakedown counter
@@ -221,6 +223,7 @@ Designing the engine interface against **both** (not just iyf) is what keeps `sh
 ## 13. Staged Build Order
 
 1. **Stage 1 — Engine extraction + migrate iyf and alfred.** The thin hook-driven engine (global lock, caffeinate, schedule + retry, `should_run`, success, notify, launchd/plist generation) with iyf and alfred-fill as its first two consumers. *This is also the "review / best-practice" deliverable the user originally asked for — separating engine from task forces every hidden assumption into the open.* Certain value, low risk.
+   - **Equivalence check is mandatory, not optional.** This stage deletes battle-tested harnesses and rebuilds behavior in the engine; the core value is "if reliability degrades, the project has failed." So the plan must verify *observable behavioral equivalence* — run the engine alongside the originals for a few cycles and/or diff the exact decisions (lock acquire/steal, caffeinate flags, and the precise skip/run choice on `ALREADY` vs `COIN_COLLECTED`). "`bash -n` passes" is not sufficient.
 2. **Stage 2 — CLI / skill management + `setup`/`doctor`.** Onboarding, the manual-steps walkthrough, list/run/logs/pause.
 3. **Stage 3 — Author-by-doing + shakedown.** The "describe it" magic, built last on a proven foundation, never a dependency of the reliable core.
 
