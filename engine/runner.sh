@@ -10,6 +10,7 @@ source "$HERE/lib.sh"
 TASK="${1:?usage: runner.sh <task> [--retry]}"; shift || true
 RETRY=false
 for a in "$@"; do [[ "$a" == "--retry" ]] && RETRY=true; done
+export NC_RETRY="$RETRY"
 
 nc_load_manifest "$TASK"
 
@@ -30,6 +31,7 @@ if [[ $sr -eq 127 ]]; then
   exit 1
 elif [[ $sr -ne 0 ]]; then
   nc_log "$TASK" "SKIP (should_run exit $sr)"
+  set +e; nc_run_hook "$TASK" notify "SKIPPED"; set -e
   exit 0
 fi
 

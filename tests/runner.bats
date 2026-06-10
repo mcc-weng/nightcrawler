@@ -76,3 +76,34 @@ logfile() { echo "$NC_LOG_ROOT/demo/$(date +%F).log"; }
   [[ "$output" == *"RETRY deferred"* ]]
   [[ "$output" != *"RESULT:"* ]]
 }
+
+@test "notify hook receives NC_RETRY=true under --retry" {
+  printf '#!/bin/bash\necho "retry=$NC_RETRY status=$1" >> "%s/notify.out"\n' "$NC_LOG_ROOT" \
+    > "$NC_TASKS_ROOT/demo/notify"
+  chmod +x "$NC_TASKS_ROOT/demo/notify"
+  run bash "$RUNNER" demo --retry
+  [ "$status" -eq 0 ]
+  run cat "$NC_LOG_ROOT/notify.out"
+  [[ "$output" == *"retry=true status=DONE"* ]]
+}
+
+@test "notify hook receives NC_RETRY=false without --retry" {
+  printf '#!/bin/bash\necho "retry=$NC_RETRY" >> "%s/notify.out"\n' "$NC_LOG_ROOT" \
+    > "$NC_TASKS_ROOT/demo/notify"
+  chmod +x "$NC_TASKS_ROOT/demo/notify"
+  run bash "$RUNNER" demo
+  run cat "$NC_LOG_ROOT/notify.out"
+  [[ "$output" == *"retry=false"* ]]
+}
+
+@test "notify hook is called with SKIPPED when should_run skips" {
+  printf '#!/bin/bash\nexit 1\n' > "$NC_TASKS_ROOT/demo/should_run"
+  chmod +x "$NC_TASKS_ROOT/demo/should_run"
+  printf '#!/bin/bash\necho "status=$1" >> "%s/notify.out"\n' "$NC_LOG_ROOT" \
+    > "$NC_TASKS_ROOT/demo/notify"
+  chmod +x "$NC_TASKS_ROOT/demo/notify"
+  run bash "$RUNNER" demo
+  [ "$status" -eq 0 ]
+  run cat "$NC_LOG_ROOT/notify.out"
+  [[ "$output" == *"status=SKIPPED"* ]]
+}

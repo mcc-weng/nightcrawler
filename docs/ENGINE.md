@@ -41,7 +41,9 @@ Idempotency / "go?" decision. Exit 0 = proceed; non-zero = skip. **The engine sh
 
 ### `notify` (optional)
 
-Called after the run completes with one argument: `DONE` or `FAILED`. Errors in `notify` never fail the overall run.
+Called with one argument: `DONE`, `FAILED`, or `SKIPPED`. `SKIPPED` is passed when `should_run` exits non-zero and the run is bypassed. Errors in `notify` never fail the overall run.
+
+The environment variable `NC_RETRY` (`true` or `false`) is exported to all hooks for the duration of the run, indicating whether the runner was invoked with `--retry`.
 
 ### `cycle_id` (optional)
 
