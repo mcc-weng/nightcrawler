@@ -119,7 +119,9 @@ nc_earliest_wake() {
   local d
   for d in "$NC_TASKS_ROOT"/*/; do
     [[ -f "$d/task.env" ]] || continue
-    ( # subshell so sourced vars don't leak
+    ( # subshell so sourced vars don't leak; unset first so an omitted
+      # SCHEDULE_MINUTE doesn't inherit a value leaked by a prior nc_load_manifest.
+      unset SCHEDULE_HOUR SCHEDULE_MINUTE
       # shellcheck disable=SC1091
       source "$d/task.env"
       printf '%02d:%02d\n' "$((10#${SCHEDULE_HOUR:-99}))" "$((10#${SCHEDULE_MINUTE:-0}))"
