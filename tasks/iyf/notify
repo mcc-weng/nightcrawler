@@ -1,0 +1,79 @@
+#!/bin/bash
+# iyf notifications — ported from collect.sh (best-effort; never fails the run).
+# Engine calls: notify <DONE|FAILED|SKIPPED>, with NC_RETRY + NC_LOG_FILE set.
+set -uo pipefail
+STATUS="${1:-}"
+LOG="$NC_LOG_FILE"
+# Overridable so tests can point at a fixture instead of the real config.
+ENV_FILE="${NC_IYF_ENV:-/Users/mikeweng/Projects/iyf-daily-coin/.env.local}"
+[[ -f "$ENV_FILE" ]] && { set -a; source "$ENV_FILE"; set +a; }
+
+# ---- helpers (verbatim from collect.sh, $LOG_FILE -> $LOG) ----
+notify() {
+    local msg="$1"
+    osascript -e "display notification \"$msg\" with title \"iyf daily coin\"" >/dev/null 2>&1 || true
+    if [[ -n "${SLACK_WEBHOOK_URL:-}" ]]; then
+        curl -fsS -m 10 -X POST -H 'Content-type: application/json' \
+            --data "{\"text\": \"$msg\"}" "$SLACK_WEBHOOK_URL" >/dev/null 2>&1 || true
+    fi
+}
+
+hc_ping() {
+    [[ -n "${HEALTHCHECKS_PING_URL:-}" ]] || return 0
+    curl -fsS -m 10 "$HEALTHCHECKS_PING_URL" >/dev/null 2>&1 || true
+}
+
+cycle_done() {
+    [[ -f "$LOG" ]] \
+        && grep -qE 'SIGNIN: (COIN_COLLECTED|ALREADY_COLLECTED)' "$LOG" \
+        && grep -qE 'SHARE: (COIN_COLLECTED|ALREADY_COMPLETED)' "$LOG"
+}
+
+fresh_collected_both() {
+    [[ -f "$LOG" ]] \
+        && grep -qE 'SIGNIN: COIN_COLLECTED' "$LOG" \
+        && grep -qE 'SHARE: COIN_COLLECTED' "$LOG"
+}
+
+already_notified() { [[ -f "$LOG" ]] && grep -q "NOTIFIED: $1" "$LOG"; }
+mark_notified()    { echo "NOTIFIED: $1" >> "$LOG"; }
+
+within_trial() {
+    local until="${NOTIFY_ON_SUCCESS_UNTIL:-}"
+    [[ -n "$until" ]] || return 1
+    [[ "$(date +%Y-%m-%d)" > "$until" ]] && return 1
+    return 0
+}
+
+positive_confirm() {
+    within_trial || return 0
+    fresh_collected_both || return 0
+    already_notified POSITIVE && return 0
+    notify "✅ iyf coin collected today — both daily quests done."
+    mark_notified POSITIVE
+}
+
+# ---- flow ----
+# SKIPPED: engine skipped via should_run (cycle already done). Mirror collect.sh's
+# idempotency-skip path (collect.sh:159-164): hc_ping + positive_confirm.
+if [[ "$STATUS" == "SKIPPED" ]]; then
+    hc_ping
+    positive_confirm
+    exit 0
+fi
+
+# DONE/FAILED (a real run happened). Mirror collect.sh:296-324.
+if cycle_done; then hc_ping; fi
+if [[ "${NC_RETRY:-false}" == "true" ]]; then
+    if fresh_collected_both; then
+        if [[ "${NOTIFY_ON_SELF_HEAL:-true}" == "true" ]] && ! already_notified POSITIVE; then
+            notify "✅ iyf coin: 9 AM missed — caught it on wake. Coin is safe."
+            mark_notified POSITIVE
+        fi
+    elif ! cycle_done && ! already_notified ACTION; then
+        notify "🚨 iyf coin NOT collected — on-wake retry failed. Collect manually at iyf.tv before the next reset (about 09:00 AEST)."
+        mark_notified ACTION
+    fi
+fi
+positive_confirm
+exit 0
