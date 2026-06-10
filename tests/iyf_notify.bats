@@ -84,3 +84,50 @@ banners() { grep -c . "$BATS_TEST_TMPDIR/calls" 2>/dev/null || echo 0; }
     # positive_confirm is a no-op (not in trial); NC_RETRY=false skips the retry block.
     [ "$(banners)" -eq 0 ]
 }
+
+# Test A: retry + ALREADY-both → SILENT (mutation-proven: guards the ! cycle_done branch)
+@test "DONE + NC_RETRY=true + ALREADY-both log → zero banners (silent retry)" {
+    printf 'SIGNIN: ALREADY_COLLECTED\nSHARE: ALREADY_COMPLETED\n' > "$NC_LOG_FILE"
+
+    NC_RETRY=true run bash "$NOTIFY" DONE
+    [ "$status" -eq 0 ]
+    [ "$(banners)" -eq 0 ]
+    run grep "NOTIFIED: ACTION" "$NC_LOG_FILE"
+    [ "$status" -ne 0 ]
+    run grep "NOTIFIED: POSITIVE" "$NC_LOG_FILE"
+    [ "$status" -ne 0 ]
+}
+
+# Test B: within-trial + retry + fresh-both → exactly ONE banner (self-heal), shared-POSITIVE dedup
+@test "DONE + NC_RETRY=true + fresh-both + within-trial → one self-heal banner, no double-send" {
+    cat > "$BATS_TEST_TMPDIR/env" <<'EOF'
+SLACK_WEBHOOK_URL=""
+HEALTHCHECKS_PING_URL=""
+NOTIFY_ON_SELF_HEAL=true
+NOTIFY_ON_SUCCESS_UNTIL=2099-12-31
+EOF
+    printf 'SIGNIN: COIN_COLLECTED\nSHARE: COIN_COLLECTED\n' > "$NC_LOG_FILE"
+
+    NC_RETRY=true run bash "$NOTIFY" DONE
+    [ "$status" -eq 0 ]
+    [ "$(banners)" -eq 1 ]
+    grep -q "caught it on wake" "$BATS_TEST_TMPDIR/calls"
+    [ "$(grep -c "NOTIFIED: POSITIVE" "$NC_LOG_FILE")" -eq 1 ]
+}
+
+# Test C: within-trial + primary (NC_RETRY=false) + fresh-both → exactly ONE heartbeat banner
+@test "DONE + NC_RETRY=false (primary) + fresh-both + within-trial → one heartbeat banner" {
+    cat > "$BATS_TEST_TMPDIR/env" <<'EOF'
+SLACK_WEBHOOK_URL=""
+HEALTHCHECKS_PING_URL=""
+NOTIFY_ON_SELF_HEAL=true
+NOTIFY_ON_SUCCESS_UNTIL=2099-12-31
+EOF
+    printf 'SIGNIN: COIN_COLLECTED\nSHARE: COIN_COLLECTED\n' > "$NC_LOG_FILE"
+
+    NC_RETRY=false run bash "$NOTIFY" DONE
+    [ "$status" -eq 0 ]
+    [ "$(banners)" -eq 1 ]
+    grep -q "collected today" "$BATS_TEST_TMPDIR/calls"
+    [ "$(grep -c "NOTIFIED: POSITIVE" "$NC_LOG_FILE")" -eq 1 ]
+}
