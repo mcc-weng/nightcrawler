@@ -28,3 +28,9 @@ setup() {
   run nc_check_success exitcode 7 "$OUT"
   [ "$status" -eq 1 ]
 }
+
+@test "markers mode: no markers given -> failure (misconfiguration)" {
+  : > "$OUT"
+  run nc_check_success markers 0 "$OUT"
+  [ "$status" -eq 1 ]
+}

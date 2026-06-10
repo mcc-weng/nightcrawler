@@ -36,7 +36,7 @@ EOF
 }
 
 @test "run_hook returns 127 when the hook is missing" {
-  run nc_run_hook demo nonexistent
+  run -127 nc_run_hook demo nonexistent
   [ "$status" -eq 127 ]
 }
 

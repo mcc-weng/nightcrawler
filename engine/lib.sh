@@ -64,18 +64,20 @@ nc_run_with_caffeinate() {
 }
 
 # Decide success. markers mode: every marker string must appear in the output
-# file. exitcode mode: the executor's exit code must be 0.
+# file, and at least one non-empty marker must be checked (zero markers is a
+# task misconfiguration, not vacuous success). exitcode mode: rc must be 0.
 nc_check_success() {
   local mode="$1" rc="$2" outfile="$3"; shift 3
   case "$mode" in
     exitcode) [[ "$rc" -eq 0 ]] ;;
     markers)
-      local m
+      local m checked=0
       for m in "$@"; do
         [[ -n "$m" ]] || continue
+        checked=1
         grep -qF -- "$m" "$outfile" || return 1
       done
-      return 0 ;;
+      [[ "$checked" -eq 1 ]] ;;
     *) return 1 ;;
   esac
 }
@@ -99,6 +101,7 @@ nc_load_manifest() {
 
 # Invoke a task hook with the standard NC_ environment. Returns 127 if the
 # hook does not exist/executable; otherwise the hook's own exit code.
+# CAVEAT: a hook that itself exits 127 is indistinguishable from "not found".
 nc_run_hook() {
   local task="$1" hook="$2"; shift 2
   local path; path="$(nc_task_dir "$task")/$hook"
