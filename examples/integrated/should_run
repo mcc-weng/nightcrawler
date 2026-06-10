@@ -1,0 +1,6 @@
+#!/bin/bash
+# Real-pattern idempotency: skip if THIS cycle's log already shows both
+# success markers. The engine passes the cycle-keyed log path as NC_LOG_FILE.
+[[ -f "$NC_LOG_FILE" ]] || exit 0
+grep -qF "A: OK" "$NC_LOG_FILE" && grep -qF "B: OK" "$NC_LOG_FILE" && exit 1
+exit 0

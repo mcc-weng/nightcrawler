@@ -1,0 +1,4 @@
+#!/bin/bash
+# Emits a multiline, multi-marker result (no real site).
+echo "A: OK"
+echo "B: OK"

@@ -1,0 +1,9 @@
+#!/bin/bash
+# Demonstrates a task-owned cycle boundary (the engine never computes this):
+# a run before 09:00 belongs to the previous day's cycle. iyf will carry its
+# real boundary logic here, verbatim from collect.sh, in Plan B.
+if (( 10#$(date +%H) < 9 )); then
+  date -v-1d +%F
+else
+  date +%F
+fi
