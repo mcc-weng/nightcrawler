@@ -1,0 +1,7 @@
+#!/bin/bash
+# Example idempotency: run only if a sentinel file is absent for today.
+# Demonstrates that should_run is 100% task-owned.
+sentinel="$NC_TASK_DIR/.done-$(date +%F)"
+[[ -e "$sentinel" ]] && exit 1   # already done today -> skip
+: > "$sentinel"                  # mark done; real tasks check the log instead
+exit 0

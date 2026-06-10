@@ -1,0 +1,3 @@
+#!/bin/bash
+# Example executor: no browser, no network — just emits a success marker.
+echo "HELLO: DONE (task=$NC_TASK dir=$NC_TASK_DIR)"
