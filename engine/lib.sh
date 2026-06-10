@@ -111,3 +111,27 @@ nc_run_hook() {
   NC_LOG_FILE="$(nc_logfile "$task")" \
   "$path" "$@"
 }
+
+# Earliest scheduled time across all installed tasks, as HH:MM.
+# (macOS pmset holds only ONE repeating wake, so all tasks share it; tasks at
+# later times rely on the retry-on-wake agent to self-heal.)
+nc_earliest_wake() {
+  local d
+  for d in "$NC_TASKS_ROOT"/*/; do
+    [[ -f "$d/task.env" ]] || continue
+    ( # subshell so sourced vars don't leak
+      # shellcheck disable=SC1091
+      source "$d/task.env"
+      printf '%02d:%02d\n' "$((10#${SCHEDULE_HOUR:-99}))" "$((10#${SCHEDULE_MINUTE:-0}))"
+    )
+  done | sort | head -1
+}
+
+# Given HH:MM, return the wake target one minute earlier as HH:MM:00,
+# wrapping across midnight.
+nc_wake_target() {
+  local h="${1%%:*}" m="${1##*:}" total
+  total=$(( 10#$h * 60 + 10#$m - 1 ))
+  (( total < 0 )) && total=$(( total + 1440 ))
+  printf '%02d:%02d:00\n' $(( total / 60 )) $(( total % 60 ))
+}
