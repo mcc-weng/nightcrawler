@@ -1,8 +1,8 @@
-# browser-chore — Design Spec
+# nightcrawler — Design Spec
 
 **Date:** 2026-06-09
-**Status:** Draft (pending user review)
-**Working name:** `browser-chore` (provisional — easy to rename before publish)
+**Status:** Approved — proceeding to Stage 1 implementation plan
+**Name:** `nightcrawler`
 
 ---
 
@@ -116,7 +116,7 @@ Resolution: the tool manages **one** wake at *(earliest scheduled task) − 1 mi
 ## 6. A Task On Disk
 
 ```
-~/.browser-chore/tasks/<name>/
+~/.nightcrawler/tasks/<name>/
   task.{toml|env}  # manifest (format TBD — see Open Question 3): schedule, executor,
                    #   caffeinate timeout, needs_browser_lock, success markers,
                    #   notify target, trigger style
@@ -125,11 +125,11 @@ Resolution: the tool manages **one** wake at *(earliest scheduled task) − 1 mi
   prompt.md        # for claude-brave executors: the validated browser flow
   flow.js          # for playwright executors: the script
   state            # unverified | trusted, shakedown counter
-~/Library/Logs/browser-chore/<name>/YYYY-MM-DD.log
-~/Library/Logs/browser-chore/.browser.lock/pid     # the global shared-browser lock
+~/Library/Logs/nightcrawler/<name>/YYYY-MM-DD.log
+~/Library/Logs/nightcrawler/.browser.lock/pid     # the global shared-browser lock
 ```
 
-Generated launchd agents per task (from templates): `com.browser-chore.<name>.plist` (primary) + `com.browser-chore.<name>-retry.plist` (retry). All share the global lock and the engine library.
+Generated launchd agents per task (from templates): `com.nightcrawler.<name>.plist` (primary) + `com.nightcrawler.<name>-retry.plist` (retry). All share the global lock and the engine library.
 
 The manifest is a small, readable, human-editable file. The skill writes it; you can hand-edit it.
 
@@ -243,7 +243,7 @@ Each stage ships value independently. The spec describes the full vision; the bu
 
 ## 15. Open Questions
 
-1. **Name.** `browser-chore` is a placeholder. Candidates: `chore`, `brave-cron`, `nightcrawler`, `autobrowse`, `claude-chore`, `perch`. Decide before publish.
+1. ~~**Name.**~~ **Resolved: `nightcrawler`** (2026-06-10).
 2. **v1 executor breadth.** Both current consumers are `claude-brave`. Do we build `playwright` + `shell` executors in Stage 1, or stub the abstraction and add them when the first non-LLM task appears? (Leaning: build the *abstraction* in Stage 1, implement `playwright` when the first real consumer needs it — YAGNI.)
 3. **Manifest format.** `task.toml` vs a bash-native `task.env`. TOML is friendlier to read/share; `.env` is bash-native (no parser dependency). (Leaning: `.env` for the runtime-critical fields to keep the engine dependency-free; revisit if it gets unwieldy.)
 4. **Where do consumer repos point?** Do iyf/alfred vendor the engine (git submodule / copy on install) or depend on the installed plugin? Affects how migration deletes their local copies.
