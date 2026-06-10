@@ -1,0 +1,22 @@
+#!/bin/bash
+# iyf executor. Success = BOTH quests terminal this cycle (fresh COIN or pre-reset
+# ALREADY) — same OR-condition as should_run, so an ALREADY cycle is RESULT: DONE,
+# not FAILED. We judge from the agent's printed markers, NOT claude's exit code
+# (a crashed agent prints no markers -> grep fails -> nonzero -> RESULT: FAILED).
+set -uo pipefail
+ENV_FILE="${NC_IYF_ENV:-/Users/mikeweng/Projects/iyf-daily-coin/.env.local}"
+[[ -f "$ENV_FILE" ]] && { set -a; source "$ENV_FILE"; set +a; }
+# Preflight kept for parity with collect.sh. NOTE: the prompt's login branch is
+# vestigial (Brave is already logged in; the slider-captcha login was abandoned).
+# The prompt references ${IYF_EMAIL}/${IYF_PASSWORD} literally and never reaches
+# them, so we deliberately do NOT interpolate creds into the prompt.
+if [[ -z "${IYF_EMAIL:-}" || -z "${IYF_PASSWORD:-}" ]]; then
+  echo "ERROR: IYF_EMAIL and IYF_PASSWORD must be set"
+  exit 1
+fi
+out="$(/Users/mikeweng/.local/bin/claude --print --dangerously-skip-permissions \
+       -p "$(cat "$NC_TASK_DIR/prompt.md")" 2>&1)"
+printf '%s\n' "$out"   # engine tees this to the cycle log (markers must land here)
+# Exit status = both quests done this cycle (fresh OR already).
+printf '%s\n' "$out" | grep -qE 'SIGNIN: (COIN_COLLECTED|ALREADY_COLLECTED)' \
+  && printf '%s\n' "$out" | grep -qE 'SHARE: (COIN_COLLECTED|ALREADY_COMPLETED)'

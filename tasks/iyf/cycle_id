@@ -1,0 +1,8 @@
+#!/bin/bash
+# iyf cycle boundary (verbatim from collect.sh): a run before 09:00 belongs to
+# the previous cycle. iyf's daily reset is in (06:01, 09:00) AEST.
+if (( 10#$(date +%H) < 9 )); then
+  date -v-1d +%Y-%m-%d
+else
+  date +%Y-%m-%d
+fi
