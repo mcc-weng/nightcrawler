@@ -117,11 +117,11 @@ SCHEDULE_HOUR=9
 SCHEDULE_MINUTE=0
 CAFFEINATE_TIMEOUT=3600
 NEEDS_BROWSER_LOCK=true
-SUCCESS_MODE=markers
-SUCCESS_MARKERS=("SIGNIN: COIN_COLLECTED" "SHARE: COIN_COLLECTED")
+SUCCESS_MODE=exitcode
 RETRY_ENABLED=true
 LABEL="iyf daily coin"
 ```
+**Why `exitcode`, not `markers`:** iyf's "done" is `COIN_COLLECTED` **OR** `ALREADY_*` — an OR the engine's AND-of-markers mode can't express. In markers mode a healthy pre-reset ALREADY cycle (agent prints `ALREADY_COLLECTED`/`ALREADY_COMPLETED`) would log `RESULT: FAILED`, which `collect.sh` never did and which would look like breakage. So the `run` hook (Step 5) owns the OR-check and returns its exit code; the engine just records it. The SIGNIN/SHARE marker lines still land in the cycle log (the run hook prints them, the engine tees them), so `should_run` can still grep them next cycle.
 
 - [ ] **Step 3: `tasks/iyf/cycle_id`** (`chmod +x`) — ported verbatim from `collect.sh:29-33`:
 ```bash
@@ -149,18 +149,30 @@ fi
 exit 0
 ```
 
-- [ ] **Step 5: `tasks/iyf/run`** (`chmod +x`) — sources iyf's existing `.env.local` for the credential preflight, then runs the agent (the engine applies caffeinate + the lock; the run hook does NOT):
+- [ ] **Step 5: `tasks/iyf/run`** (`chmod +x`) — runs the agent and OWNS the success determination (exit 0 iff both quests done this cycle, COIN or ALREADY). The engine applies caffeinate + the lock; the run hook does NOT. `ENV_FILE` is overridable via `NC_IYF_ENV` so tests can point at a fixture:
 ```bash
 #!/bin/bash
+# iyf executor. Success = BOTH quests terminal this cycle (fresh COIN or pre-reset
+# ALREADY) — same OR-condition as should_run, so an ALREADY cycle is RESULT: DONE,
+# not FAILED. We judge from the agent's printed markers, NOT claude's exit code
+# (a crashed agent prints no markers -> grep fails -> nonzero -> RESULT: FAILED).
 set -uo pipefail
-ENV_FILE="/Users/mikeweng/Projects/iyf-daily-coin/.env.local"
+ENV_FILE="${NC_IYF_ENV:-/Users/mikeweng/Projects/iyf-daily-coin/.env.local}"
 [[ -f "$ENV_FILE" ]] && { set -a; source "$ENV_FILE"; set +a; }
+# Preflight kept for parity with collect.sh. NOTE: the prompt's login branch is
+# vestigial (Brave is already logged in; the slider-captcha login was abandoned).
+# The prompt references ${IYF_EMAIL}/${IYF_PASSWORD} literally and never reaches
+# them, so we deliberately do NOT interpolate creds into the prompt.
 if [[ -z "${IYF_EMAIL:-}" || -z "${IYF_PASSWORD:-}" ]]; then
   echo "ERROR: IYF_EMAIL and IYF_PASSWORD must be set"
   exit 1
 fi
-exec /Users/mikeweng/.local/bin/claude --print --dangerously-skip-permissions \
-  -p "$(cat "$NC_TASK_DIR/prompt.md")"
+out="$(/Users/mikeweng/.local/bin/claude --print --dangerously-skip-permissions \
+       -p "$(cat "$NC_TASK_DIR/prompt.md")" 2>&1)"
+printf '%s\n' "$out"   # engine tees this to the cycle log (markers must land here)
+# Exit status = both quests done this cycle (fresh OR already).
+printf '%s\n' "$out" | grep -qE 'SIGNIN: (COIN_COLLECTED|ALREADY_COLLECTED)' \
+  && printf '%s\n' "$out" | grep -qE 'SHARE: (COIN_COLLECTED|ALREADY_COMPLETED)'
 ```
 
 - [ ] **Step 6: Smoke-check the hooks in isolation** (no real run): verify each hook is executable and syntactically valid:
@@ -260,7 +272,8 @@ Port `collect.sh`'s notification helpers + flow into a single `tasks/iyf/notify`
 set -uo pipefail
 STATUS="${1:-}"
 LOG="$NC_LOG_FILE"
-ENV_FILE="/Users/mikeweng/Projects/iyf-daily-coin/.env.local"
+# Overridable so tests can point at a fixture instead of the real config.
+ENV_FILE="${NC_IYF_ENV:-/Users/mikeweng/Projects/iyf-daily-coin/.env.local}"
 [[ -f "$ENV_FILE" ]] && { set -a; source "$ENV_FILE"; set +a; }
 
 # --- helpers (verbatim from collect.sh, $LOG_FILE -> $LOG) ---
@@ -299,7 +312,7 @@ positive_confirm
 ```
 Use the EXACT helper bodies from collect.sh (only swap `$LOG_FILE`→`$LOG`). Do not redesign the logic.
 
-- [ ] **Step 2: Write `tests/iyf_notify.bats`** — verify the dedup + branch logic without sending real notifications. Stub the network/UI: set `SLACK_WEBHOOK_URL=""` and override `osascript`/`curl` by prepending a fake-bin dir to `PATH` that records calls to a file. Cases:
+- [ ] **Step 2: Write `tests/iyf_notify.bats`** — verify the dedup + branch logic without sending real notifications. Hermetic setup: point `NC_IYF_ENV` at a fixture env file in `$BATS_TEST_TMPDIR` (with `SLACK_WEBHOOK_URL=""`, `HEALTHCHECKS_PING_URL=""`, etc.) so the hook never sources the real `.env.local`; set `NC_LOG_FILE` to a temp log; and override `osascript`/`curl` by prepending a fake-bin dir to `PATH` that records calls to a file. Cases:
   - `SKIPPED` with both-done log → no ACTION/POSITIVE banner unless within trial; one `hc_ping` attempt.
   - `DONE` + `NC_RETRY=true` + fresh-both log → exactly one POSITIVE banner; a second invocation (ACTION/POSITIVE already marked) → no duplicate.
   - `FAILED` + `NC_RETRY=true` + not-done log → exactly one ACTION banner; second invocation → none.
