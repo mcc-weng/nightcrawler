@@ -79,3 +79,32 @@ nc_check_success() {
     *) return 1 ;;
   esac
 }
+
+# Source a task's manifest into the current shell and apply defaults.
+# Fails if the manifest is absent or SCHEDULE_HOUR is undeclared.
+nc_load_manifest() {
+  local task="$1" f
+  f="$(nc_task_dir "$task")/task.env"
+  [[ -f "$f" ]] || { echo "nc: no manifest for task '$task' ($f)" >&2; return 1; }
+  # shellcheck disable=SC1090
+  source "$f"
+  [[ -n "${SCHEDULE_HOUR:-}" ]] || { echo "nc: task.env missing SCHEDULE_HOUR" >&2; return 1; }
+  : "${SCHEDULE_MINUTE:=0}"
+  : "${CAFFEINATE_TIMEOUT:=0}"
+  : "${NEEDS_BROWSER_LOCK:=false}"
+  : "${SUCCESS_MODE:=exitcode}"
+  : "${RETRY_ENABLED:=false}"
+  : "${LABEL:=$task}"
+}
+
+# Invoke a task hook with the standard NC_ environment. Returns 127 if the
+# hook does not exist/executable; otherwise the hook's own exit code.
+nc_run_hook() {
+  local task="$1" hook="$2"; shift 2
+  local path; path="$(nc_task_dir "$task")/$hook"
+  [[ -x "$path" ]] || return 127
+  NC_TASK="$task" \
+  NC_TASK_DIR="$(nc_task_dir "$task")" \
+  NC_LOG_FILE="$(nc_logfile "$task")" \
+  "$path" "$@"
+}
