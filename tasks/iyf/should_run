@@ -1,10 +1,13 @@
 #!/bin/bash
-# Idempotency, ported verbatim from collect.sh cycle_done(): skip if this cycle's
-# log already shows both quests done (fresh COIN_COLLECTED OR pre-reset ALREADY_*).
+# Idempotency: skip if this cycle's log already shows both quests done (fresh
+# COIN_COLLECTED OR pre-reset ALREADY_*). Anchored to line start (^): the agent
+# emits its contract lines at column 0, whereas its free-form prose can QUOTE the
+# markers inline (e.g. "`SIGNIN: COIN_COLLECTED`") — anchoring stops that from
+# spuriously poisoning idempotency.
 LOG="$NC_LOG_FILE"
 if [[ -f "$LOG" ]] \
-    && grep -qE 'SIGNIN: (COIN_COLLECTED|ALREADY_COLLECTED)' "$LOG" \
-    && grep -qE 'SHARE: (COIN_COLLECTED|ALREADY_COMPLETED)' "$LOG"; then
+    && grep -qE '^SIGNIN: (COIN_COLLECTED|ALREADY_COLLECTED)' "$LOG" \
+    && grep -qE '^SHARE: (COIN_COLLECTED|ALREADY_COMPLETED)' "$LOG"; then
     exit 1   # already done this cycle -> skip
 fi
 exit 0

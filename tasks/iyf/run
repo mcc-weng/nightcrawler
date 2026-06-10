@@ -17,6 +17,8 @@ fi
 out="$(/Users/mikeweng/.local/bin/claude --print --dangerously-skip-permissions \
        -p "$(cat "$NC_TASK_DIR/prompt.md")" 2>&1)"
 printf '%s\n' "$out"   # engine tees this to the cycle log (markers must land here)
-# Exit status = both quests done this cycle (fresh OR already).
-printf '%s\n' "$out" | grep -qE 'SIGNIN: (COIN_COLLECTED|ALREADY_COLLECTED)' \
-  && printf '%s\n' "$out" | grep -qE 'SHARE: (COIN_COLLECTED|ALREADY_COMPLETED)'
+# Exit status = both quests done this cycle (fresh OR already). Anchored to line
+# start (^) so the agent's contract lines count, not inline prose that quotes the
+# markers (which previously caused a false RESULT: DONE on the logged-out path).
+printf '%s\n' "$out" | grep -qE '^SIGNIN: (COIN_COLLECTED|ALREADY_COLLECTED)' \
+  && printf '%s\n' "$out" | grep -qE '^SHARE: (COIN_COLLECTED|ALREADY_COMPLETED)'

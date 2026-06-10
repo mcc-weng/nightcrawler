@@ -36,3 +36,12 @@ run_sr() { run bash "$SR"; }
   printf 'SIGNIN: FAILED — x\nSHARE: FAILED — y\n' > "$NC_LOG_FILE"
   run_sr; [ "$status" -eq 0 ]
 }
+
+# Regression: an agent essay that QUOTES the markers inline (not at line start)
+# must NOT poison idempotency. Real on 2026-06-11: a logged-out-path run wrote
+# prose containing `SIGNIN: COIN_COLLECTED` while its actual verdict was FAILED;
+# the old unanchored grep skipped subsequent runs. Anchored ^ fixes it.
+@test "inline prose quoting markers does not trigger skip (must run)" {
+  printf 'Latest log shows `SIGNIN: COIN_COLLECTED`, `SHARE: COIN_COLLECTED`.\nSIGNIN: FAILED — not logged in\nSHARE: FAILED — not reached\n' > "$NC_LOG_FILE"
+  run_sr; [ "$status" -eq 0 ]
+}
