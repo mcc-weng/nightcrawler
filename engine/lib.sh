@@ -50,3 +50,15 @@ nc_lock_acquire() {
 }
 
 nc_lock_release() { rm -rf "$NC_LOCK_DIR" 2>/dev/null || true; }
+
+# Wrap a command in `caffeinate -is -t <timeout>` when timeout is a positive
+# integer; otherwise run it directly. -i blocks idle sleep, -s blocks system
+# sleep (AC only), -t caps the assertion so a hang can't drain the battery.
+nc_run_with_caffeinate() {
+  local timeout="${1:-0}"; shift
+  if [[ "$timeout" =~ ^[0-9]+$ ]] && (( timeout > 0 )); then
+    "$NC_CAFFEINATE_BIN" -is -t "$timeout" "$@"
+  else
+    "$@"
+  fi
+}
