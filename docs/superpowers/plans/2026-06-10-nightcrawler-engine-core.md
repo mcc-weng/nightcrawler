@@ -1141,7 +1141,132 @@ git commit -m "feat: single-wake computation for the shared pmset schedule"
 
 ---
 
-### Task 9: Engine docs + full-suite gate
+### Task 9: Integrated end-to-end — the path real tasks actually use
+
+The `hello` example deliberately exercises the *easy* path (no lock, no caffeinate, no cycle_id, single-line marker). This task adds a second bundled example shaped like a real task and an integration test that drives the **whole** integrated path at once: global lock acquire/release + caffeinate wrapping + a task-owned `cycle_id` boundary + log-grep `should_run` idempotency + multiline marker detection. Without this, "suite green" would not imply "the engine can run iyf."
+
+**Files:**
+- Create: `examples/integrated/task.env`, `examples/integrated/run`, `examples/integrated/should_run`, `examples/integrated/cycle_id`
+- Test: `tests/integration.bats`
+
+- [ ] **Step 1: Write the failing integration test**
+
+Create `tests/integration.bats`:
+
+```bash
+#!/usr/bin/env bats
+
+setup() {
+  export NC_LOG_ROOT="$BATS_TEST_TMPDIR/logs"
+  export NC_TASKS_ROOT="$BATS_TEST_DIRNAME/../examples"
+  mkdir -p "$NC_LOG_ROOT"
+  # Shim caffeinate: echo its args (teed into the log) and exec the real command.
+  cat > "$BATS_TEST_TMPDIR/fake-caffeinate" <<'EOF'
+#!/bin/bash
+echo "caffeinate-args: $*"
+shift 3
+exec "$@"
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/fake-caffeinate"
+  export NC_CAFFEINATE_BIN="$BATS_TEST_TMPDIR/fake-caffeinate"
+  RUNNER="$BATS_TEST_DIRNAME/../engine/runner.sh"
+}
+
+intlog() { echo "$NC_LOG_ROOT/integrated/"*.log; }
+
+@test "integrated path: lock + caffeinate + multiline markers -> DONE, lock released" {
+  run bash "$RUNNER" integrated
+  [ "$status" -eq 0 ]
+  run cat $(intlog)
+  [[ "$output" == *"caffeinate-args: -is -t 30"* ]]   # caffeinate wrapped the run
+  [[ "$output" == *"A: OK"* ]]
+  [[ "$output" == *"B: OK"* ]]
+  [[ "$output" == *"RESULT: DONE"* ]]
+  [ ! -d "$NC_LOG_ROOT/.browser.lock" ]               # lock released on exit
+}
+
+@test "integrated path: second run sees both markers in the log -> should_run skips" {
+  bash "$RUNNER" integrated            # first run fills the log
+  run bash "$RUNNER" integrated        # second run
+  [ "$status" -eq 0 ]
+  run cat $(intlog)
+  [[ "$output" == *"SKIP (should_run exit 1)"* ]]
+}
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `bats tests/integration.bats`
+Expected: FAIL — the `examples/integrated` task does not exist yet.
+
+- [ ] **Step 3: Create the iyf-shaped example task**
+
+Create `examples/integrated/task.env`:
+
+```bash
+SCHEDULE_HOUR=9
+SCHEDULE_MINUTE=0
+CAFFEINATE_TIMEOUT=30
+NEEDS_BROWSER_LOCK=true
+SUCCESS_MODE=markers
+SUCCESS_MARKERS=("A: OK" "B: OK")
+RETRY_ENABLED=true
+LABEL="integrated example"
+```
+
+Create `examples/integrated/run`:
+
+```bash
+#!/bin/bash
+# Emits a multiline, multi-marker result (no real site).
+echo "A: OK"
+echo "B: OK"
+```
+
+Create `examples/integrated/should_run`:
+
+```bash
+#!/bin/bash
+# Real-pattern idempotency: skip if THIS cycle's log already shows both
+# success markers. The engine passes the cycle-keyed log path as NC_LOG_FILE.
+[[ -f "$NC_LOG_FILE" ]] || exit 0
+grep -qF "A: OK" "$NC_LOG_FILE" && grep -qF "B: OK" "$NC_LOG_FILE" && exit 1
+exit 0
+```
+
+Create `examples/integrated/cycle_id`:
+
+```bash
+#!/bin/bash
+# Demonstrates a task-owned cycle boundary (the engine never computes this):
+# a run before 09:00 belongs to the previous day's cycle. iyf will carry its
+# real boundary logic here, verbatim from collect.sh, in Plan B.
+if (( 10#$(date +%H) < 9 )); then
+  date -v-1d +%F
+else
+  date +%F
+fi
+```
+
+- [ ] **Step 4: Make hooks executable + run the test**
+
+Run:
+```bash
+chmod +x examples/integrated/run examples/integrated/should_run examples/integrated/cycle_id
+bats tests/integration.bats
+```
+Expected: PASS (2 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add examples/integrated tests/integration.bats
+git commit -m "test: integrated e2e — lock+caffeinate+cycle_id+log-grep should_run+multiline markers"
+```
+
+---
+
+### Task 10: Engine docs + full-suite gate
 
 **Files:**
 - Modify: `README.md`
@@ -1196,7 +1321,8 @@ git commit -m "docs: engine interface reference + authoring quickstart"
 - launchd primary + retry generation; `--retry` defers before scheduled hour → Tasks 6, 7 ✓
 - Single pmset wake = earliest task − 1 min → Task 8 + installer note ✓
 - Notify hook → Task 6 ✓
-- Proven end-to-end without a real site → `examples/hello` (Tasks 0, 6, 9) ✓
+- Proven end-to-end without a real site → `examples/hello` (Tasks 0, 6) ✓
+- **Integrated path exercised as a whole** (lock + caffeinate + task-owned `cycle_id` + log-grep `should_run` + multiline markers) → `examples/integrated` + `tests/integration.bats` (Task 9) ✓ — so "suite green" means "the engine can run an iyf-shaped task," not just a toy.
 - **Deferred to Plans B/C (out of scope here, by design):** migrating iyf and alfred, the equivalence-check/cutover, removing alfred's defer-to-iyf hack, executors beyond the generic `run` hook (`playwright`/`shell`), the skill/CLI front door, `setup`/`doctor`. These are named so the reader knows they're intentional, not gaps.
 
 **2. Placeholder scan:** No TBD/TODO; every code/test step shows complete content; the one forward-reference (installer mentions `nc_wake_target`/`nc_earliest_wake`) is called out and the tested path doesn't exercise it.
@@ -1204,3 +1330,10 @@ git commit -m "docs: engine interface reference + authoring quickstart"
 **3. Type/name consistency:** Function names (`nc_log`, `nc_cycle_id`, `nc_logfile`, `nc_lock_acquire`, `nc_lock_release`, `nc_run_with_caffeinate`, `nc_check_success`, `nc_load_manifest`, `nc_run_hook`, `nc_task_dir`, `nc_earliest_wake`, `nc_wake_target`), manifest keys, hook names (`run`/`should_run`/`notify`/`cycle_id`), and env vars (`NC_LOG_ROOT`/`NC_TASKS_ROOT`/`NC_CAFFEINATE_BIN`/`NC_LAUNCHAGENTS_DIR`/`NC_TASK`/`NC_TASK_DIR`/`NC_LOG_FILE`) are consistent across all tasks and match the locked contract.
 
 **4. Known macOS test caveats:** `sed -i ''` (Task 6 lock test) and `plutil` are BSD/macOS variants — correct for the target platform. `bats` must be installed (Task 0).
+
+---
+
+## Notes for Plans B & C (carry forward)
+
+- **Plan B (iyf):** the iyf `cycle_id` and `should_run` hooks must be ported **verbatim** from `collect.sh` — the `< 9` hour gate, the `date -v-1d` previous-cycle mapping, and the COIN_COLLECTED-**or**-ALREADY skip rule (the engine has no cycle logic to lean on). Plan B is the acceptance gate for Stage 1: it **must** include the equivalence check (seed cycle logs across the COIN/ALREADY/empty/mixed combinations and assert the new `should_run` decision matches `collect.sh`'s documented behavior), plus a shadow period running the new agents alongside the old before disabling the old ones. "Engine suite green" is a waypoint, not the stopping point.
+- **Plan C (alfred):** alfred's executor emits a multi-state result (`FILL: DONE/PARTIAL/RETRY/NOTHING/NOT_LOGGED_IN`), but the engine collapses success to binary DONE/FAILED. Verify (don't assume) that mapping `PARTIAL`/`RETRY` → `FAILED` produces the retry behavior alfred wants — it likely does because alfred's `should_run` reads `pending.json` state rather than the binary result, but confirm against alfred's intended semantics. Also confirm the global lock (first-come, no priority) is acceptable in place of the deleted defer-to-iyf hack: neither task may depend on winning the race.
