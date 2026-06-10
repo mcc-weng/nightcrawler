@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nightcrawler.__TASK__-retry</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__RUNNER__</string>
+        <string>__TASK__</string>
+        <string>--retry</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>1800</integer>
+    <key>StandardOutPath</key>
+    <string>__LAUNCHD_LOG__</string>
+    <key>StandardErrorPath</key>
+    <string>__LAUNCHD_LOG__</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
