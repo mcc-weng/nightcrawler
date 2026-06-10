@@ -44,12 +44,12 @@ fi
 
 LOG_FILE="$(nc_logfile "$TASK")"
 mkdir -p "$(dirname "$LOG_FILE")"
-OUT="$(mktemp)"
 RUN="$(nc_task_dir "$TASK")/run"
 if [[ ! -x "$RUN" ]]; then
   nc_log "$TASK" "ERROR: required run hook missing"
   exit 1
 fi
+OUT="$(mktemp)"
 
 nc_log "$TASK" "START ${LABEL}"
 export NC_TASK="$TASK" NC_TASK_DIR="$(nc_task_dir "$TASK")" NC_LOG_FILE="$LOG_FILE"

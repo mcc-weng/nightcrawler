@@ -66,3 +66,13 @@ logfile() { echo "$NC_LOG_ROOT/demo/$(date +%F).log"; }
   run cat "$(logfile)"
   [[ "$output" == *"SKIP (browser lock held)"* ]]
 }
+
+@test "--retry defers (executor never runs) before the scheduled hour" {
+  [ "$(date +%H)" = "23" ] && skip "current hour is 23: deferral gate not deterministically exercisable"
+  sed -i '' 's/^SCHEDULE_HOUR=.*/SCHEDULE_HOUR=23/' "$NC_TASKS_ROOT/demo/task.env"
+  run bash "$RUNNER" demo --retry
+  [ "$status" -eq 0 ]
+  run cat "$(logfile)"
+  [[ "$output" == *"RETRY deferred"* ]]
+  [[ "$output" != *"RESULT:"* ]]
+}

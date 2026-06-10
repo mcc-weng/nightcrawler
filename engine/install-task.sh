@@ -18,6 +18,8 @@ RUNNER="$HERE/runner.sh"
 LAUNCHD_LOG="$NC_LOG_ROOT/$TASK/launchd.log"
 
 nc_load_manifest "$TASK"
+SCHEDULE_HOUR=$((10#$SCHEDULE_HOUR))
+SCHEDULE_MINUTE=$((10#$SCHEDULE_MINUTE))
 mkdir -p "$NC_LAUNCHAGENTS_DIR" "$NC_LOG_ROOT/$TASK"
 
 render() {
